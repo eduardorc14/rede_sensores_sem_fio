@@ -5,6 +5,7 @@ BIN_DIR = bin
 # Compilador e flags
 CC = gcc
 CFLAGS = -Wall -g
+THREAD_FLAGS = -pthread
 
 # Alvo padrão
 all: $(BIN_DIR)/client $(BIN_DIR)/server
@@ -15,7 +16,7 @@ $(BIN_DIR)/client: $(SRC_DIR)/client.c $(BIN_DIR)/common.o
 
 # Binário do servidor
 $(BIN_DIR)/server: $(SRC_DIR)/server.c $(BIN_DIR)/common.o
-	$(CC) $(CFLAGS) $^ -o $@
+	$(CC) $(CFLAGS) $(THREAD_FLAGS) $^ -o $@
 
 # Objeto comum
 $(BIN_DIR)/common.o: $(SRC_DIR)/common.c
