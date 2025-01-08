@@ -28,16 +28,19 @@ void * client_thread(void *data) {
 
     char caddrstr[BUFSZ];
     addrtostr(caddr, caddrstr, BUFSZ);
-    printf("[log] connection from %s\n", caddrstr);
+
 
     char buf[BUFSZ];
     memset(buf, 0, BUFSZ);
-    size_t count = recv(cdata->csock, buf, BUFSZ - 1, 0);
-    printf("[msg] %s, %d bytes: %s\n", caddrstr, (int)count, buf);
+    struct sensor_message message;
+    size_t count = recv(cdata->csock, &message, sizeof(message), MSG_WAITALL);
+
+    imprimir_message(&message);
 
     sprintf(buf, "remote endpoint: %.1000s\n", caddrstr);
-    count = send(cdata->csock, buf, strlen(buf) + 1, 0);
-    if (count != strlen(buf) + 1) {
+
+    count = send(cdata->csock, &message, sizeof(message), 0);
+    if (count != sizeof(message)) {
         logexit("send");
     }
     close(cdata->csock);
@@ -77,7 +80,6 @@ int main(int argc, char **argv) {
 
     char addrstr[BUFSZ];
     addrtostr(addr, addrstr, BUFSZ);
-    printf("bound to %s, waiting connections\n", addrstr);
 
     while (1) {
         struct sockaddr_storage cstorage;

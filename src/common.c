@@ -1,3 +1,4 @@
+#include "common.h" // Header que provavelmente contém funções utilitárias, como logexit
 #include <inttypes.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -97,4 +98,12 @@ int server_sockaddr_init(const char *proto, const char *portstr,
     } else {
         return -1;
     }
+}
+
+
+void imprimir_message(struct sensor_message *message){
+    printf("log:\n");
+    printf("%s sensor in ( %d, %d)\n", message->type, message->coords[0], message->coords[1]);
+    printf("measurement: %.4f\n", message->measurement);
+    printf("\n");
 }

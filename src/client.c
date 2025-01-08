@@ -10,15 +10,6 @@
 #include <sys/socket.h>
 #include <arpa/inet.h>
 
-
-// Estrutura de comunicação entre cliente e o servidor.
-struct sensor_message {
-	char type[12];
-	int coords[2];
-	float measurement;
-};
-
-
 // Mensagem padrão para ser exibida após cada mensagem de erro.
 void usage(int argc, char **argv){
 	printf("Usage: %s <server ip> <port> -type <temperature|humidity|air_quality> -coords <x> <y>\n", argv[0]);
@@ -120,22 +111,17 @@ int main(int argc, char **argv) {
 	char addrstr[BUFSZ];
 	addrtostr(addr, addrstr, BUFSZ);
 
-	printf("connected to %s\n", addrstr);
+	//printf("connected to %s\n", addrstr);
 
-	char buf[BUFSZ];
-	memset(buf, 0, BUFSZ);
 	size_t count = send(s, &message, sizeof(message), 0);
 	if (count != sizeof(message)){
 		logexit("send");
 	}
 
-	memset(buf, 0, BUFSZ);
 	unsigned total = 0;
 	while(1) {
 		count = recv(s, &message, sizeof(message), MSG_WAITALL);
-		if (count != sizeof(message)) {
-            logexit("recv");
-        }
+		imprimir_message(&message) ;
 		if (count == 0) {
 			// Connection terminated.
 			break;
@@ -145,7 +131,6 @@ int main(int argc, char **argv) {
 	close(s);
 
 	printf("received %u bytes\n", total);
-	puts(buf);
 
 	exit(EXIT_SUCCESS);
 }
