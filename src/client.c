@@ -10,6 +10,9 @@
 #include <sys/socket.h>
 #include <arpa/inet.h>
 
+
+int break_message = 0; // Intervalo entre as mensagens
+
 // Mensagem padrão para ser exibida após cada mensagem de erro.
 void usage(int argc, char **argv){
 	printf("Usage: %s <server ip> <port> -type <temperature|humidity|air_quality> -coords <x> <y>\n", argv[0]);
@@ -55,12 +58,15 @@ float medicao_aleatoria(char **argv){
 	
 	if(strcmp(argv[4], "temperature") == 0){
 		i = 0;
+		break_message = 5;
 	}
 	else if(strcmp(argv[4], "humidity") == 0){
 		i = 1;
+		break_message = 7;
 	}
 	else if(strcmp(argv[4], "air_quality") == 0){
 		i = 2;
+		break_message = 10;
 	}
 
 
@@ -88,11 +94,6 @@ void sensor_message(char **argv, struct sensor_message *message){
 
 int main(int argc, char **argv) {
 
-	verificar_argumentos(argc, argv);
-	// Mensagem de comunicação
-	struct sensor_message message;
-	sensor_message(argv, &message);
-
 	struct sockaddr_storage storage;
 	if (0 != addrparse(argv[1], argv[2], &storage)) {
 		usage(argc, argv);
@@ -113,24 +114,25 @@ int main(int argc, char **argv) {
 
 	//printf("connected to %s\n", addrstr);
 
-	size_t count = send(s, &message, sizeof(message), 0);
-	if (count != sizeof(message)){
-		logexit("send");
-	}
+	verificar_argumentos(argc, argv);
 
-	unsigned total = 0;
+	// Mensagem de comunicação
+	struct sensor_message message;
+
 	while(1) {
-		count = recv(s, &message, sizeof(message), MSG_WAITALL);
-		imprimir_message(&message) ;
-		if (count == 0) {
-			// Connection terminated.
-			break;
+		
+		sensor_message(argv, &message);
+		size_t count = send(s, &message, sizeof(message), 0);
+		if (count != sizeof(message)){
+			logexit("send");
 		}
-		total += count;
+		count = recv(s, &message, sizeof(message), MSG_WAITALL);
+		imprimir_message(&message);
+		sleep(break_message);
+		
 	}
 	close(s);
 
-	printf("received %u bytes\n", total);
 
 	exit(EXIT_SUCCESS);
 }

@@ -33,15 +33,17 @@ void * client_thread(void *data) {
     char buf[BUFSZ];
     memset(buf, 0, BUFSZ);
     struct sensor_message message;
-    size_t count = recv(cdata->csock, &message, sizeof(message), MSG_WAITALL);
-
-    imprimir_message(&message);
 
     sprintf(buf, "remote endpoint: %.1000s\n", caddrstr);
+    
+    while(1){
 
-    count = send(cdata->csock, &message, sizeof(message), 0);
-    if (count != sizeof(message)) {
-        logexit("send");
+        size_t count = recv(cdata->csock, &message, sizeof(message), MSG_WAITALL);
+        imprimir_message(&message);
+        count = send(cdata->csock, &message, sizeof(message), 0);
+        if (count != sizeof(message)) {
+            logexit("send");
+        }
     }
     close(cdata->csock);
 
