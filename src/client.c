@@ -88,6 +88,26 @@ void sensor_message(char **argv, struct sensor_message *message){
 }
 
 
+float distancia_sensor(struct sensor_message *message_init, struct sensor_message *message){
+
+	float dx = message_init->coords[0] - message->coords[0];
+	float dy = message_init->coords[1] - message->coords[1];
+	float distancia = sqrt((dx * dx) +(dy * dy));
+	return distancia;
+}
+
+
+float new_measure(struct sensor_message *message_init, struct sensor_message *message){
+
+	float d = distancia_sensor(&message_init, &message);
+	float diferenca = message->measurement - message_init->measurement;
+	float ajuste = 0.1 + (1 / (d + 1));
+	float nova_medida = message->measurement + (ajuste * diferenca);
+	return nova_medida;
+	
+}
+
+
 #define BUFSZ 1024
 
 
@@ -117,11 +137,14 @@ int main(int argc, char **argv) {
 	verificar_argumentos(argc, argv);
 
 	// Mensagem de comunicação
-	struct sensor_message message;
+	struct sensor_message message, message_init;
+	
+	sensor_message(argv, &message);
+	message_init = message;
 
 	while(1) {
 		
-		sensor_message(argv, &message);
+		message_init.measurement = message.measurement;
 		size_t count = send(s, &message, sizeof(message), 0);
 		if (count != sizeof(message)){
 			logexit("send");
