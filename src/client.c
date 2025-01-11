@@ -108,6 +108,82 @@ float new_measure(struct sensor_message *message_init, struct sensor_message *me
 }
 
 
+struct Node{
+	struct sensor_message msg;   // Identificador do sensor
+	float distancia;			 // Distancia do sensor
+	struct Node* next;           // Ponteiro para o próximo nó
+	struct Node* prev;           // Ponteiro para o nó anterior
+};
+
+
+struct Lista{
+	struct Node* head;           // Ponteiro para o início da lista
+	struct Node* tail;           // Ponteiro para o final da lista
+	int tamanho                  // Quantidade de elementos na lista
+};
+
+
+// Função para criar a lista dinamicamente
+struct Lista* criar_lista(){
+	struct Lista* lista = (struct Lista*)malloc(sizeof(struct Lista));
+	lista->head = NULL;
+	lista->tail = NULL;
+	lista->tamanho = 0;
+	return lista;
+}
+
+
+struct Node* criar_node(struct sensor_message message, float distancia){
+	struct Node* novo = (struct Node*)malloc(sizeof(struct Node));
+	novo->msg = message;
+	novo->distancia = distancia;
+	novo->next = NULL;
+	novo->prev = NULL;
+	return novo;
+}
+
+void inserir_ordenado(struct Lista* lista, struct sensor_message message, float distancia){
+	struct Node* novo = criar_node(message, distancia);
+
+	// Caso a lista esteja vazia
+	if(lista->head == NULL){
+		lista->head = novo;
+		lista->tail = novo;
+	}
+	else{
+		struct Node* atual = lista->head;
+
+		// Encontrar a  posição correta para inserir
+		while(atual != NULL && atual->distancia < distancia){
+			atual = atual->next;
+		}
+
+		// Insere no início
+		if(atual == lista->head){
+			novo->next = lista->head;
+			lista->head->prev = novo;
+			lista->head = novo;
+		}
+
+		// Insere no final
+		else if(atual == NULL){
+			novo->prev = lista->tail;
+			lista->tail->next = novo;
+			lista->tail = novo;
+		}
+
+		// Insere no meio
+		else {
+			novo->next = atual;
+			novo->prev = atual->prev;
+			atual->prev->next = novo;
+			atual->prev = novo;
+		}
+	}
+
+	lista->tamanho++; // Atualiza tamanho da lista
+}
+
 #define BUFSZ 1024
 
 
