@@ -123,6 +123,7 @@ void * client_thread(void *data) {
         ssize_t count = recv(csock, &message, sizeof(message), MSG_WAITALL);
         
         imprimir_message(&message);
+        printf("\n");
         // Assina o topíco
         subscribe_to_topic(&message, csock);
         send_to_subscribe(message, csock, count);

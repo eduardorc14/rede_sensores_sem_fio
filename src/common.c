@@ -105,5 +105,4 @@ void imprimir_message(struct sensor_message *message){
     printf("log:\n");
     printf("%s sensor in ( %d, %d)\n", message->type, message->coords[0], message->coords[1]);
     printf("measurement: %.4f\n", message->measurement);
-    printf("\n");
 }

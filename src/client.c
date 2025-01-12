@@ -5,6 +5,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <time.h>
+#include <math.h>
 
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -92,14 +93,14 @@ float distancia_sensor(struct sensor_message *message_init, struct sensor_messag
 
 	float dx = message_init->coords[0] - message->coords[0];
 	float dy = message_init->coords[1] - message->coords[1];
-	float distancia = sqrt((dx * dx) +(dy * dy));
+	float distancia = sqrtf((dx * dx) +(dy * dy));
 	return distancia;
 }
 
 
 float new_measure(struct sensor_message *message_init, struct sensor_message *message){
 
-	float d = distancia_sensor(&message_init, &message);
+	float d = distancia_sensor(message_init, message);
 	float diferenca = message->measurement - message_init->measurement;
 	float ajuste = 0.1 + (1 / (d + 1));
 	float nova_medida = message->measurement + (ajuste * diferenca);
@@ -119,7 +120,7 @@ struct Node{
 struct Lista{
 	struct Node* head;           // Ponteiro para o início da lista
 	struct Node* tail;           // Ponteiro para o final da lista
-	int tamanho                  // Quantidade de elementos na lista
+	int tamanho;                 // Quantidade de elementos na lista
 };
 
 
@@ -153,8 +154,16 @@ void inserir_ordenado(struct Lista* lista, struct sensor_message message, float 
 	else{
 		struct Node* atual = lista->head;
 
+		// Verifica se o sensor já está inscrito na lista
+		while(atual != NULL){
+			if(atual->msg.coords[0] == message.coords[0] && atual->msg.coords[1] == message.coords[1]){
+				return;
+			}
+		}
+
 		// Encontrar a  posição correta para inserir
 		while(atual != NULL && atual->distancia < distancia){
+
 			atual = atual->next;
 		}
 
@@ -184,7 +193,30 @@ void inserir_ordenado(struct Lista* lista, struct sensor_message message, float 
 	lista->tamanho++; // Atualiza tamanho da lista
 }
 
+
+// Função para exibir a lista
+void exibir_lista(struct Lista* lista){
+	struct Node* atual = lista->head;
+
+	while(atual != NULL){
+		printf("Distancia: %.2f\n", atual->distancia);
+		atual = atual->next;
+	}
+	printf("\n");
+}
+
+
+void process_message(struct sensor_message* message, struct sensor_message* message_init){
+
+	float nova_medida = new_measure(message_init, message);
+	message->measurement = nova_medida;
+	imprimir_message(message);
+	printf("\n");
+	
+}
+
 #define BUFSZ 1024
+
 
 
 
@@ -213,10 +245,15 @@ int main(int argc, char **argv) {
 	verificar_argumentos(argc, argv);
 
 	// Mensagem de comunicação
-	struct sensor_message message, message_init;
+	struct sensor_message message;
+	struct sensor_message message_init;
 	
 	sensor_message(argv, &message);
 	message_init = message;
+
+	// Criando lista para armazenar os sensores por proximidade
+	struct Lista* lista = criar_lista();
+	float distancia = 0;
 
 	while(1) {
 		
@@ -226,7 +263,23 @@ int main(int argc, char **argv) {
 			logexit("send");
 		}
 		count = recv(s, &message, sizeof(message), MSG_WAITALL);
-		imprimir_message(&message);
+		
+		// Testa condição em que os sensores estão na mesma posição 
+		if(message.coords[0] == message_init.coords[0] && message.coords[1] == message_init.coords[1]){
+			imprimir_message(&message);
+			printf("action: same location \n");
+			printf("\n");
+		}
+		else{
+			// Cálculo da distância entre os sensores
+			distancia = distancia_sensor(&message_init, &message);
+			// Inserir elementos na lista
+			inserir_ordenado(lista, message, distancia);
+			exibir_lista(lista);
+			// Processar tipo de messagem
+			process_message(&message, &message_init);
+		}
+		
 		sleep(break_message);
 		
 	}

@@ -11,7 +11,7 @@ THREAD_FLAGS = -pthread
 all: $(BIN_DIR)/client $(BIN_DIR)/server
 
 # Binário do cliente
-$(BIN_DIR)/client: $(SRC_DIR)/client.c $(BIN_DIR)/common.o
+$(BIN_DIR)/client: $(SRC_DIR)/client.c $(BIN_DIR)/common.o -lm
 	$(CC) $(CFLAGS) $^ -o $@
 
 # Binário do servidor
