@@ -6,10 +6,12 @@
 #include <unistd.h>
 #include <time.h>
 #include <math.h>
+#include <signal.h>
 
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <arpa/inet.h>
+
 
 
 int break_message = 0; // Intervalo entre as mensagens
@@ -99,13 +101,17 @@ float distancia_sensor(struct sensor_message *message_init, struct sensor_messag
 
 
 float new_measure(struct sensor_message *message_init, struct sensor_message *message){
-
-	float d = distancia_sensor(message_init, message);
-	float diferenca = message->measurement - message_init->measurement;
-	float ajuste = 0.1 + (1 / (d + 1));
-	float nova_medida = message->measurement + (ajuste * diferenca);
-	return nova_medida;
 	
+	float d = distancia_sensor(message_init, message);
+	
+	float diferenca = message->measurement - message_init->measurement;
+	
+	float ajuste = 0.1 * (1.0 / (d + 1.0));
+
+	float nova_medida = message_init->measurement + (ajuste * diferenca);
+	return nova_medida;
+
+
 }
 
 
@@ -159,11 +165,13 @@ void inserir_ordenado(struct Lista* lista, struct sensor_message message, float 
 			if(atual->msg.coords[0] == message.coords[0] && atual->msg.coords[1] == message.coords[1]){
 				return;
 			}
+			atual = atual->next;
 		}
+
+		atual = lista->head;
 
 		// Encontrar a  posição correta para inserir
 		while(atual != NULL && atual->distancia < distancia){
-
 			atual = atual->next;
 		}
 
@@ -194,31 +202,145 @@ void inserir_ordenado(struct Lista* lista, struct sensor_message message, float 
 }
 
 
+void remover_sensor(struct Lista* lista, struct sensor_message* message){
+
+	// Verifica se a lista está vazia
+	if(lista->head == NULL){
+		return;
+	}
+
+	struct Node* atual = lista->head;
+
+	// Varre a lista procurando o nó a ser removido
+	while(atual != NULL){
+		if(atual->msg.coords[0] == message->coords[0] && atual->msg.coords[1] == message->coords[1]){
+
+			// Nó é o único da lista
+			if(atual->prev == NULL && atual->next == NULL){
+				lista->head = NULL;
+				lista->tail = NULL;
+			}
+
+			// Nó é o primeiro da lista
+			else if(atual->prev == NULL){
+				lista->head = atual->next;
+				lista->head->prev = NULL;
+			}
+
+			// Nó é o último da lista
+			else if(atual->next == NULL){
+				lista->tail = atual->prev;
+				lista->tail->next = NULL;
+			}
+
+			// Nó está no meio da lista
+			else{
+
+				atual->prev->next = atual->next;
+				atual->next->prev = atual->prev;
+			}
+
+			// Libera a memória
+			free(atual);
+			lista->tamanho--;
+			return;
+		}
+		atual = atual->next;
+	}
+}
+
 // Função para exibir a lista
 void exibir_lista(struct Lista* lista){
 	struct Node* atual = lista->head;
 
 	while(atual != NULL){
-		printf("Distancia: %.2f\n", atual->distancia);
+		printf("Distancia (%d, %d): %.2f\n",atual->msg.coords[0], atual->msg.coords[1], atual->distancia);
 		atual = atual->next;
 	}
 	printf("\n");
 }
 
 
-void process_message(struct sensor_message* message, struct sensor_message* message_init){
+float ajustar_intervalo(float medida, struct sensor_message* message){
+	// Ajustando intervalos
+	float min[3] = {20.0, 10.0, 15.0};
+	float max[3] = {40.0, 90.0, 30.0};
+	
+	
+	char* type_sensor[3] = {"temperature", "humidity", "air_quality"};
+
+	for(int i = 0; i < 3; i++){
+		if(strcmp(message->type, type_sensor[i]) == 0){
+			if(medida > max[i]){
+				medida = max[i];
+			}
+			
+			if(medida < min[i]){
+				medida = min[i];
+			}
+		}
+	}
+	
+	return medida;
+}
+
+
+void process_message(struct Lista* lista, struct sensor_message* message, struct sensor_message* message_init){
 
 	float nova_medida = new_measure(message_init, message);
-	message->measurement = nova_medida;
+	
+	
+	nova_medida = ajustar_intervalo(nova_medida, message);
+	float correction = nova_medida - message_init->measurement;
+
+
+	struct Node* atual = lista->head;
+
+	int i = 0;
+
+	while(atual != NULL && i < 3){
+		if((atual->msg.coords[0] == message->coords[0] && atual->msg.coords[1] == message->coords[1])){
+			imprimir_message(message);
+			printf("action:  correction  of %.4f\n", correction);
+			printf("\n");
+			message_init->measurement = nova_medida;
+			return;
+		}
+		atual = atual->next;
+		i++;
+	}
+
 	imprimir_message(message);
+	printf("action: not  neighbor\n");
 	printf("\n");
 	
+
+}
+
+
+// Função para liberar memoria da lista
+void liberar_memoria_lista(struct Lista* lista){
+
+	struct Node* atual = lista->head;
+	struct Node* proximo;
+
+	while(atual != NULL){
+
+		proximo = atual->next;
+		free(atual);
+		atual = proximo;
+	}
+
+	free(lista);
+}
+
+
+// Função para tratar interrupt keyboard
+void handle_interrupt(int sig){
+	exit(0);
 }
 
 #define BUFSZ 1024
-
-
-
 
 int main(int argc, char **argv) {
 
@@ -255,34 +377,90 @@ int main(int argc, char **argv) {
 	struct Lista* lista = criar_lista();
 	float distancia = 0;
 
+	// Configurando o sinal CTRL + C
+	struct sigaction sa;
+	sa.sa_handler = handle_interrupt;
+	sigemptyset(&sa.sa_mask);
+	sa.sa_flags = 0;
+	
+	if(sigaction(SIGINT, &sa, NULL) == -1){
+		perror("Erro SIGNIT");
+		exit(EXIT_FAILURE);
+	}
+
+	// Envia mensagem para inscrever no tópico
+	size_t count = send(s, &message, sizeof(message), 0);
+	if (count != sizeof(message)){
+			logexit("send");
+	}
+
+
+	message.measurement = message_init.measurement;
+
+	// Início do temporizador
+	clock_t start_time = clock();
+    double elapsed_time;
+
 	while(1) {
 		
-		message_init.measurement = message.measurement;
-		size_t count = send(s, &message, sizeof(message), 0);
-		if (count != sizeof(message)){
-			logexit("send");
+		elapsed_time = (double)(clock() - start_time) / CLOCKS_PER_SEC;
+
+		if(elapsed_time >= break_message){
+			count = send(s, &message, sizeof(message), 0);
+			if (count != sizeof(message)){
+				logexit("send");
+			}
+			start_time = clock(); // reinicia o temporizador
 		}
-		count = recv(s, &message, sizeof(message), MSG_WAITALL);
-		
-		// Testa condição em que os sensores estão na mesma posição 
-		if(message.coords[0] == message_init.coords[0] && message.coords[1] == message_init.coords[1]){
-			imprimir_message(&message);
-			printf("action: same location \n");
-			printf("\n");
+
+		else {
+
+			count = recv(s, &message, sizeof(message), MSG_DONTWAIT);
+	
+			if(count == 1 || count == 0){
+				close(s);
+				exit(EXIT_SUCCESS);
+			}
+			
+			if(count != -1){
+				// Testa condição em que os sensores estão na mesma posição
+				if(message.coords[0] == message_init.coords[0] && message.coords[1] == message_init.coords[1]){
+
+					imprimir_message(&message);
+					message.measurement = message_init.measurement;
+					printf("action: same location \n");
+					printf("\n");
+
+				}
+				// Sensor removed tem erro
+				else if(message.measurement == -1){
+
+					imprimir_message(&message);
+					remover_sensor(lista, &message);
+					printf("action: removed \n");
+					printf("\n");
+					message.measurement = message_init.measurement;
+					message.coords[0] = message_init.coords[0];
+					message.coords[1] = message_init.coords[1];	
+
+				}
+
+				else{
+					// Cálculo da distância entre os sensores
+					distancia = distancia_sensor(&message_init, &message);
+					// Inserir elementos na lista
+					inserir_ordenado(lista, message, distancia);
+					// Processar tipo de messagem
+					process_message(lista, &message, &message_init);
+
+					message.measurement = message_init.measurement;
+					message.coords[0] = message_init.coords[0];
+					message.coords[1] = message_init.coords[1];	
+				}
+			}	
 		}
-		else{
-			// Cálculo da distância entre os sensores
-			distancia = distancia_sensor(&message_init, &message);
-			// Inserir elementos na lista
-			inserir_ordenado(lista, message, distancia);
-			exibir_lista(lista);
-			// Processar tipo de messagem
-			process_message(&message, &message_init);
-		}
-		
-		sleep(break_message);
-		
 	}
+	liberar_memoria_lista(lista);
 	close(s);
 
 

@@ -6,11 +6,12 @@
 #include <string.h>
 #include <unistd.h>
 
+
 #include <sys/socket.h>
 #include <sys/types.h>
 
 #define BUFSZ 1024
-#define MAX_CLIENTS 12 // Máximo de assinantes por tópico
+#define MAX_CLIENTS 15 // Máximo de assinantes por tópico
 #define NUM_TOPICS 3  // Número de tópicos
 
 struct client_data {
@@ -59,9 +60,8 @@ void inicialize_topics(){
 void subscribe_to_topic(struct sensor_message *message, int csock){
 
     for(int i = 0; i < NUM_TOPICS; i++){
+        pthread_mutex_lock(&topic[i].lock); // Bloqueia acesso ao tópico
         if(strcmp(topic[i].name, message->type) == 0){
-            pthread_mutex_lock(&topic[i].lock); // Bloqueia acesso ao tópico
-
             // Verifica se o cliente já está inscrito no tópico
             for(int j = 0; j < topic[i].subscriber_count; j++){
                 if(topic[i].subscribers[j] == csock){
@@ -74,20 +74,55 @@ void subscribe_to_topic(struct sensor_message *message, int csock){
                 topic[i].subscribers[topic[i].subscriber_count] = csock;
                 topic[i].subscriber_count++;
             }
-            pthread_mutex_unlock(&topic[i].lock); // Libera o mutex
-            return;
-
+           
         }
+        pthread_mutex_unlock(&topic[i].lock); // Libera o mutex
     }
+    return;
+}
+
+
+void unsubscribe(struct sensor_message *message, int csock){
+
+    for(int i = 0; i < NUM_TOPICS; i++){
+        pthread_mutex_lock(&topic[i].lock); // Bloqueia acesso ao tópico
+        if(strcmp(topic[i].name, message->type) == 0){
+            // Verifica se o cliente já está inscrito no tópico
+            for(int j = 0; j < topic[i].subscriber_count; j++){
+                if(topic[i].subscribers[j] == csock){
+
+                    // Remove cliente da lista de assinantes
+                    for (int k = j; k < topic[i].subscriber_count - 1; k++) {
+                        topic[i].subscribers[k] = topic[i].subscribers[k + 1];
+                    }
+                    topic[i].subscriber_count--;
+                }
+            }
+        }
+        pthread_mutex_unlock(&topic[i].lock);
+    
+    }
+}
+
+
+void imprimir_mutex(struct sensor_message message){
+
+    for(int i = 0; i < NUM_TOPICS; i++){
+        pthread_mutex_lock(&topic[i].lock);
+        if(strcmp(topic[i].name, message.type) == 0){
+            imprimir_message(&message);
+        }
+        pthread_mutex_unlock(&topic[i].lock);
+    }
+    
 }
 
 
 void send_to_subscribe(struct sensor_message message, int csock, ssize_t count){
 
     for(int i = 0; i < NUM_TOPICS; i++){
+        pthread_mutex_lock(&topic[i].lock);
         if(strcmp(topic[i].name, message.type) == 0){
-            pthread_mutex_lock(&topic[i].lock);
-
             // Percorre todos os assinantes do tópico
             for(int j = 0; j < topic[i].subscriber_count; j++){
                 // Envia mensagem para os assinantes do tópico
@@ -117,16 +152,32 @@ void * client_thread(void *data) {
     sprintf(buf, "remote endpoint: %.1000s\n", caddrstr);
     
     int csock = cdata->csock;
+
+    // Inscreve sensor no tópico correspondente
+    ssize_t count = recv(csock, &message, sizeof(message), MSG_WAITALL);
+    subscribe_to_topic(&message, csock);
+
+
     
     while(1){
 
-        ssize_t count = recv(csock, &message, sizeof(message), MSG_WAITALL);
-        
-        imprimir_message(&message);
-        printf("\n");
-        // Assina o topíco
-        subscribe_to_topic(&message, csock);
-        send_to_subscribe(message, csock, count);
+        count = recv(csock, &message, sizeof(message), MSG_WAITALL);
+
+        if(count == 0 || count == -1){
+            message.measurement = -1;
+            imprimir_mutex(message);
+            printf("\n");
+            unsubscribe(&message, csock);
+            send_to_subscribe(message, csock, count);
+            close(cdata->csock);
+            pthread_exit(EXIT_SUCCESS);
+        }
+        else{
+            imprimir_mutex(message);
+            printf("\n");
+            // Assina o topíco
+            send_to_subscribe(message, csock, count);
+        }
 
     }
     close(cdata->csock);
@@ -134,7 +185,11 @@ void * client_thread(void *data) {
     pthread_exit(EXIT_SUCCESS);
 }
 
+
+
 int main(int argc, char **argv) {
+
+
     if (argc < NUM_TOPICS) {
         usage(argc, argv);
     }
